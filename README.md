@@ -1,3 +1,5 @@
+# INTRODUCTION
+
 # SET UP
 ## Project & Gems
 1. Start new project without the default test-suite.
@@ -507,4 +509,34 @@ Update config/initializers/devise.rb
 
 `git merge users`
 
-# SET UP HEROKU
+# SET UP HEROKU WITH SENDGRID
+
+`heroku create`
+
+Update config/environments/development.rb
+```ruby
+  config.action_mailer.raise_delivery_errors = true
+  config.action_mailer.delivery_method = :smtp
+  host = 'prinstagram.herokuapp.com'
+  config.action_mailer.default_url_options = { host: host }
+  ActionMailer::Base.smtp_settings = {
+    :address        => 'smtp.sendgrid.net',
+    :port           => '587',
+    :authentication => :plain,
+    :user_name      => ENV['SENDGRID_USERNAME'],
+    :password       => ENV['SENDGRID_PASSWORD'],
+    :domain         => 'heroku.com',
+    :enable_starttls_auto => true
+  }
+
+```
+
+`git add .`
+
+`git commit -m "Update action_mailer to sendgrid for heroku"`
+
+`git push heroku master`
+
+`heroku run rails db:migrate`
+
+`heroku addons:create sendgrid:starter`
