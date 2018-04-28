@@ -18,12 +18,13 @@ gem 'jbuilder', '~> 2.5'
 group :development, :test do
   gem 'dotenv-rails', '~> 2.4'
   gem 'sqlite3'
+  gem "factory_bot_rails", "~> 4.0"
   gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
 end
 
 group :test do
+  gem 'shoulda-matchers', '~> 3.1', '>= 3.1.2'
   gem 'rspec-rails', '~> 3.7', '>= 3.7.2'
-  gem 'factory_bot', '~> 4.8', '>= 4.8.2'
   gem 'capybara', '~> 3.0', '>= 3.0.2'
 end
 
