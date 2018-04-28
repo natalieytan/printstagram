@@ -1,4 +1,9 @@
 # INTRODUCTION
+[https://printstagram.herokuapp.com/](https://printstagram.herokuapp.com/)
+
+Hi, I am Nat. I am trying to create an instagram clone, while learning how to write RSpec for rails.
+
+This is my process:
 
 # SET UP
 ## Project & Gems
