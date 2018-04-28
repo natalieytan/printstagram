@@ -217,3 +217,10 @@ e.g. ` <%= f.submit "Change my password", class: "waves-effect waves-light btn" 
 # app/controllers/application_controller.rb
 before_action :authenticate_user!
 ```
+
+6. Save, Commit, Checkout to Master & Merge
+`git add .`
+
+`git add --all`
+
+`git commit -m "Added Users Model and updated Template"`
