@@ -5,6 +5,8 @@ gem 'stripe', '~> 3.13'
 gem 'devise', '~> 4.4', '>= 4.4.3'
 gem 'pundit', '~> 1.1'
 gem 'shrine', '~> 2.10', '>= 2.10.1'
+gem 'image_processing', '~> 1.0'
+gem 'mini_magick', '>= 4.3.5'
 gem 'geocoder', '~> 1.4', '>= 1.4.7'
 gem 'jquery-rails'
 gem 'materialize-sass', '~> 0.100.2'
@@ -19,6 +21,7 @@ group :development, :test do
   gem 'dotenv-rails', '~> 2.4'
   gem 'sqlite3'
   gem "factory_bot_rails", "~> 4.0"
+  gem 'selenium-webdriver', '~> 3.11'
   gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
 end
 

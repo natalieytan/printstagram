@@ -21,6 +21,8 @@ gem 'stripe', '~> 3.13'
 gem 'devise', '~> 4.4', '>= 4.4.3'
 gem 'pundit', '~> 1.1'
 gem 'shrine', '~> 2.10', '>= 2.10.1'
+gem 'image_processing', '~> 1.0'
+gem 'mini_magick', '>= 4.3.5'
 gem 'geocoder', '~> 1.4', '>= 1.4.7'
 gem 'jquery-rails'
 gem 'materialize-sass', '~> 0.100.2'
@@ -35,6 +37,7 @@ group :development, :test do
   gem 'dotenv-rails', '~> 2.4'
   gem 'sqlite3'
   gem "factory_bot_rails", "~> 4.0"
+  gem 'selenium-webdriver', '~> 3.11'
   gem 'byebug', platforms: [:mri, :mingw, :x64_mingw]
 end
 
@@ -545,3 +548,382 @@ Update config/environments/development.rb
 `heroku run rails db:migrate`
 
 `heroku addons:create sendgrid:starter`
+
+# CREATE POSTS & IMAGEUPLOADER
+
+## Write tests for the ImageUploader & Posts Model
+
+`git branch posts`
+
+`git checkout posts`
+
+add to .gitignore
+
+`public/uploads`
+
+```ruby
+# spec/uploaders/image_uploader_spec.rb
+require 'rails_helper'
+
+describe ImageUploader do
+  context "with a valid image" do
+    let(:post) { create(:post) }
+
+    it "can create a post" do
+      expect(post).to be_valid
+    end
+    it "generates image thumbnails" do
+      expect(post.image.keys).to match_array [:original, :small, :medium, :large]
+    end
+  end
+end
+```
+
+```ruby
+# spec/models/post_spec.rb
+require 'rails_helper'
+
+describe Post, :type => :model do
+  context 'validations' do
+    it { should validate_presence_of :image_data }
+    it { should validate_presence_of :caption }
+    it { should belong_to :user }
+    it { should validate_length_of(:caption).is_at_most(500) }
+  end
+end
+```
+
+## Configure Shrine
+```ruby
+#config/initializers/shrine.rb
+require "shrine"
+require "shrine/storage/file_system"
+
+Shrine.storages = {
+  cache: Shrine::Storage::FileSystem.new("public", prefix: "uploads/cache"), # temporary
+  store: Shrine::Storage::FileSystem.new("public", prefix: "uploads/store"), # permanent
+}
+
+Shrine.plugin :activerecord
+Shrine.plugin :cached_attachment_data # for forms
+```
+
+
+```ruby
+require "image_processing/mini_magick"
+ 
+class ImageUploader < Shrine
+  plugin :processing
+  plugin :activerecord, validations: true
+  plugin :versions   # enable Shrine to handle a hash of files
+  plugin :delete_raw # delete processed files after uploading
+  plugin :validation_helpers
+  plugin :determine_mime_type
+  
+  process(:store) do |io, context|
+
+  Attacher.validate do
+    validate_max_size 1.megabytes, message: 'is too large (max is 1 MB)'
+    validate_mime_type_inclusion ['image/jpg', 'image/jpeg', 'image/png', 'image/gif']
+    validate_extension_inclusion %w[jpg jpeg png gif]
+  end
+    original = io.download
+    pipeline = ImageProcessing::MiniMagick.source(original)
+
+    size_800 = pipeline.resize_to_limit!(800, 800)
+    size_500 = pipeline.resize_to_limit!(500, 500)
+    size_300 = pipeline.resize_to_limit!(300, 300)
+
+    original.close!
+
+    { original: io, large: size_800, medium: size_500, small: size_300 }
+  end
+end
+```
+
+## Create Post Model and Set Relationships
+`bin/rails g model Post image_data:text caption:string user:references`
+
+`bin/rails db:migrate`
+
+Update post model to include imageuploader
+```ruby
+class Post < ApplicationRecord
+  belongs_to :user
+  include ImageUploader::Attachment.new(:image)
+end
+
+```
+
+Update user model to iclude relationships with posts
+```ruby
+class User < ApplicationRecord
+  devise :database_authenticatable, :registerable,
+         :recoverable, :rememberable, :trackable, :validatable, :lockable
+  has_many :posts
+end
+
+```
+
+run the tests `bundle exec rspec`
+
+# CREATE PAGES (routes, controller, views) TO UPLOAD & VIEW POSTS
+
+## Write Tests For Post CRUD
+
+### Create
+```ruby
+require 'rails_helper.rb'
+
+feature 'New posts can be created' do
+
+  context 'when user is logged in' do
+    before do
+      create(:user)
+      visit "/"
+      click_link "Login"
+      login "example@example.com", "password"
+    end
+
+    scenario 'with valid image and caption' do
+      visit '/posts/new'
+      attach_file('post_file', "spec/support/images/image.jpg")
+      fill_in 'caption', with: 'this is my dummy image' 
+      click_button 'Create Post'
+      expect(page).to have_content('this is my dummy image')
+      expect(page).to have_content("Post created!")
+    end
+
+    scenario 'but not with invalid filetype' do
+      visit '/posts/new'
+      attach_file('post_file', "spec/support/images/random.pdf")
+      fill_in 'caption', with: 'woof' 
+      click_button 'Create Post'
+      expect(page).to have_content("errors prohibited this post from being saved")
+      expect(page).to have_content("Unable to create post!")
+      expect(page).not_to have_content("Post created!")
+    end
+
+    scenario 'but not with files larger than 1MB' do
+      visit '/posts/new'
+      attach_file('post_file', "spec/support/images/verylargefile.png")
+      fill_in 'caption', with: 'woof' 
+      click_button 'Create Post'
+      expect(page).to have_content("Unable to create post!")
+      expect(page).not_to have_content("Post created!")
+      expect(page).to have_content("Image is too large")
+    end
+  end
+
+end
+```
+### Read
+
+### Update
+
+## Destroy
+```ruby
+require 'rails_helper.rb'
+
+feature 'Posts can be deleted' do
+
+    scenario 'when user is logged and post belongs to user' do
+      user = create(:user, email: "example@example.com", password: "password")
+      post = create(:post, user: user)
+      visit "/"
+      click_link "Login"
+      login "example@example.com", "password"
+      visit "/posts/#{post.id}"
+      click_link 'delete'
+      expect(page).to have_content("Post was successfully destroyed.")
+      expect(current_path).to eq(posts_path)
+    end
+    
+end
+```
+
+## Create Routes & Write Controller And Views for Post Index & Create
+
+updates routes
+```ruby
+  root 'posts#index'
+.
+  resources :posts
+.
+```
+
+`rails g controller Posts`
+
+```ruby
+class PostsController < ApplicationController
+  before_action :set_post, only: [:show, :edit, :update, :destroy]
+  skip_before_action :authenticate_user!, only: [:index, :show]
+
+  def index
+    @posts = Post.all
+  end
+
+  def show
+  end
+
+  def new
+    @post = Post.new
+  end
+
+  def edit
+  end
+
+  def create
+    @post = Post.new(post_params)
+    @post.user = current_user
+    if @post.save
+      flash[:notice] = "Post created!"
+      redirect_to @post
+    else
+      flash.now[:alert] = "Unable to create post!"
+      render 'new'
+    end
+  end
+
+  def update
+      edit_params =params.require(:post).permit(:caption)
+      if @post.update(edit_params)
+        flash[:notice] = "Post updated!"
+        redirect_to @post
+      else
+        flash[:alert] = "Unable to update post!"
+        render 'edit'
+      end
+  end
+
+
+  def destroy
+    @post.destroy
+    redirect_to posts_url, notice: 'Post was successfully destroyed.'
+  end
+  private
+    def set_post
+      @post = Post.find(params[:id])
+    end
+
+    def post_params
+      params.require(:post).permit(:image, :caption)
+    end
+end
+
+
+```
+
+
+### Index View
+views/posts/index.html.erb
+```html
+<h2>Posts</h2>
+
+<%= link_to 'New Post', new_post_path, class: "btn btn-primary btn-lg btn-block" %>
+
+<div class="row">
+  
+    <% @posts.each do |post| %>
+    <div class="col s12 m4">
+    <%= render 'image_card', post: post, size: :medium, card_size: "card large" %>
+    </div>
+    <% end %>
+    
+    
+</div>
+
+```
+
+### New View
+views/posts/new.html.erb
+
+```html
+<h1>New Post</h1>
+
+<%= render 'form', post: @post %>
+
+<%= link_to 'Back', posts_path %>
+
+```
+
+### Post (Show) View
+views/posts/show.html.erb
+
+```html
+  <%= render 'image_card', post: @post, size: :large, card_size: "card" %>
+```
+
+## Post Form Partial
+views/posts/_form.html.erb
+```
+<%= form_with(model: post, local: true) do |form| %>
+  <% if post.errors.any? %>
+    <div id="error_explanation">
+      <h2><%= pluralize(post.errors.count, "error") %> prohibited this post from being saved:</h2>
+
+      <ul>
+      <% post.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+      </ul>
+    </div>
+  <% end %>
+<div class="row">
+    <div class="file-field input-field">
+      <div class="waves-effect waves-light btn btn-block">
+        <span>Upload photo <i class="material-icons">add_a_photo</i></span>
+        
+        <%= form.hidden_field :image, value: post.cached_image_data %>
+        <%= form.file_field :image, accept: 'image/jpeg,image/jpg,image/gif,image/png', id: "post_file" %>
+      </div>
+      <div class="file-path-wrapper">
+        <input class="file-path validate" type="text" placeholder="Upload a picture">
+      </div>
+    </div>
+
+    
+  <div class="field">
+    <%= form.label :caption %>
+    <%= form.text_area :caption, id: :caption %>
+  </div>
+
+  <div class="actions">
+    <%= form.submit class: "waves-effect waves-light btn" %>
+  </div>
+<% end %>
+
+<script type="text/javascript">
+  $('#post_file').bind('change', function() {
+    var size_in_megabytes = this.files[0].size/1024/1024;
+    if (size_in_megabytes > 1) {
+      alert('Maximum file size is 1MB. Please choose a smaller file.');
+    }
+  });
+</script>
+```
+
+## Image Card Partial
+views/posts/image_card.html.erb
+```html
+
+  <%= content_tag :div, class: card_size do %>
+    <%= link_to post_path(post) do %>
+    <div class="card-image">
+        <%= image_tag post.image_url(size), class:"responsive-img" %>
+    </div>
+    <% end %>
+    <div class="card-content">
+          <p><%= post.caption %></p>
+           <p class="grey-text "> <%= post.user.email %></p>
+          <p class="grey-text ">Posted <%= time_ago_in_words(post.created_at) %> ago</p>
+    </div>
+ 
+    <div class="card-action">
+     <%= link_to  edit_post_path(post), class: "btn-floating btn-large waves-effect waves-light" do %> <%= content_tag(:i , "edit", class:"tiny material-icons")%> <% end %> <%= link_to post, method: :delete, data: { confirm: 'Are you sure you want to delete this post?' }, class: "btn-floating btn-large waves-effect waves-light" do %><%= content_tag(:i , "delete", class:"tiny material-icons")%> <% end %>
+    </div>
+
+
+<% end %>
+ 
+```

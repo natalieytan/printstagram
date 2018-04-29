@@ -1,0 +1,14 @@
+<h2>Posts</h2>
+
+<%= link_to 'New Post', new_post_path, class: "btn btn-primary btn-lg btn-block" %>
+
+<div class="row">
+  
+    <% @posts.each do |post| %>
+    <div class="col s12 m4">
+    <%= render 'image_card', post: post, size: :medium, card_size: "card medium" %>
+    </div>
+    <% end %>
+    
+    
+</div>

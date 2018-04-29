@@ -1,0 +1,50 @@
+<%= form_with(model: post, local: true) do |form| %>
+  <% if post.errors.any? %>
+    <div id="error_explanation">
+      <h2><%= pluralize(post.errors.count, "error") %> prohibited this post from being saved:</h2>
+
+      <ul>
+      <% post.errors.full_messages.each do |message| %>
+        <li><%= message %></li>
+      <% end %>
+      </ul>
+    </div>
+  <% end %>
+<div class="row">
+<% if edit_image %>
+    <div class="file-field input-field">
+      <div class="waves-effect waves-light btn btn-block">
+        <span>Upload photo <i class="material-icons">add_a_photo</i></span>
+        
+        <%= form.hidden_field :image, value: post.cached_image_data %>
+        <%= form.file_field :image, accept: 'image/jpeg,image/jpg,image/gif,image/png', id: "post_file" %>
+      </div>
+      <div class="file-path-wrapper">
+        <input class="file-path validate" type="text" placeholder="Upload a picture">
+      </div>
+    </div>
+  <% else %>
+    <% if @post.image_data? %>
+    <%= image_tag @post.image_url(:medium) %>
+  <% end %>
+  <% end %>
+
+    
+  <div class="field">
+    <%= form.label :caption %>
+    <%= form.text_area :caption, id: :caption %>
+  </div>
+
+  <div class="actions">
+    <%= form.submit class: "waves-effect waves-light btn" %>
+  </div>
+<% end %>
+
+<script type="text/javascript">
+  $('#post_file').bind('change', function() {
+    var size_in_megabytes = this.files[0].size/1024/1024;
+    if (size_in_megabytes > 1) {
+      alert('Maximum file size is 1MB. Please choose a smaller file.');
+    }
+  });
+</script>
